@@ -33,7 +33,77 @@ app.get('/', (c) => c.text('hello'))
 
 app.get('/api', (c) => c.text('hello!!'))
 
-app.get('/api/livefans/:id', async (c) => {  // LiveFansからセットリストを取得
+app.get('/api/livefans/fetch_html', async (c) => {  // LiveFansのセトリ一覧を取得
+    try {
+        const artist = c.req.query('artist') || ''
+        const encodedArtist = encodeURIComponent(artist).replace(/%20/g, '+')
+        const url = `https://www.livefans.jp/search?option=1&keyword=${encodedArtist}&genre=all`
+
+        const payload = { 'handler_type': 'sub', url }
+
+        const lambdaApiUrl = 'https://pur2p81urh.execute-api.ap-northeast-1.amazonaws.com/default/selenium-lambda';
+
+        const lambda_response = await fetch(lambdaApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!lambda_response.ok) {
+            throw new Error(`Lambda API responded with status: ${lambda_response.status}`);
+        }
+
+        const setlistJson = await lambda_response.json();
+
+        console.log(setlistJson)
+
+        return c.json(setlistJson)
+    } catch (error) {
+        console.error('Error fetching HTML:', error)
+        return c.text('Error fetching HTML', 500)
+    }
+})
+
+app.get('/api/livefans/detail/:id', async (c) => {  // セトリ一覧画面でクリックしたセトリの詳細（曲順）を取得
+    const id = c.req.param('id')
+
+    const url = `https://www.livefans.jp/events/${id}`
+
+    try {
+        const lambdaApiUrl = 'https://pur2p81urh.execute-api.ap-northeast-1.amazonaws.com/default/selenium-lambda';
+
+        const payload = { 'handler_type': 'main', url };
+
+        const response = await fetch(lambdaApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const setlistJson = await response.json();
+        console.log(setlistJson)
+
+        const setlist: Setlist = {
+            artist_name: setlistJson?.artist_name,
+            location: setlistJson?.location,
+            venue: setlistJson?.venue,
+            tour_name: setlistJson?.tour_name,
+            songs: setlistJson?.songs,
+        }
+
+        return c.json(setlist)
+    } catch (error) {
+        console.error('Error fetching HTML:', error)
+        return c.text('Error fetching HTML', 500)
+    }
+})
+
+
+app.get('/api/livefans/:id', async (c) => {  // LiveFansのセトリIDからSpotifyプレイリストを作成
     const id = c.req.param('id')
 
     const iscover: boolean = c.req.query('isCover') === 'true'
@@ -46,7 +116,7 @@ app.get('/api/livefans/:id', async (c) => {  // LiveFansからセットリスト
 
     try {
 
-        const lambdaApiUrl = 'https://jllyl7rl5d.execute-api.ap-northeast-1.amazonaws.com/Prod/selenium-lambda';
+        const lambdaApiUrl = 'https://pur2p81urh.execute-api.ap-northeast-1.amazonaws.com/default/selenium-lambda';
 
         const payload = { 'handler_type': 'main', url, iscover };
 
@@ -89,7 +159,41 @@ app.get('/api/livefans/:id', async (c) => {  // LiveFansからセットリスト
 
 })
 
-app.get('/api/setlistfm/:id', async (c) => {  // Setlist.fmからセットリストを取得
+
+
+app.get('/api/setlistfm/fetch_html', async (c) => {  // Setlist.fmのセトリ一覧を取得
+    try {
+        const artist = c.req.query('artist') || ''
+        const encodedArtist = encodeURIComponent(artist).replace(/%20/g, '+')
+
+        const headers = {
+            "x-api-key": "rvH9s-nOQE4FOGgLByWj1VfmjzqIaEt5Q8wB",
+            "Accept": "application/json",
+        }
+        const url = `https://api.setlist.fm/rest/1.0/search/artists?artistName=${encodedArtist}&sort=relevance`
+
+        const response = await fetch(url, { headers })
+        const data: any = await response.json();
+
+        const mbid: string = data.artist[0].mbid
+
+        const searchSetlist = await fetch(`https://api.setlist.fm/rest/1.0/artist/${mbid}/setlists`, { headers })
+
+        const setlistData: any = await searchSetlist.json();
+
+        console.log(setlistData)
+
+        return c.json(setlistData)
+
+
+    } catch (error) {
+        console.error('Error fetching HTML:', error)
+        return c.text('Error fetching HTML', 500)
+    }
+})
+
+
+app.get('/api/setlistfm/:id', async (c) => {  // Setlist.fmのセトリIDからSpotifyプレイリストを作成
     const id = c.req.param('id')
 
     let setlist_name;
@@ -191,6 +295,8 @@ app.get('/api/setlistfm/:id', async (c) => {  // Setlist.fmからセットリス
     }
 })
 
+
+
 app.get('/api/modify/:id', async (c) => {
     const id = c.req.param('id')
 
@@ -231,69 +337,7 @@ app.post('/api/recreate/playlist/:id', async (c) => {
     return c.json(playlistId);
 })
 
-app.get('/api/fetch-html/setlistfm', async (c) => {
-    try {
-        const artist = c.req.query('artist') || ''
-        const encodedArtist = encodeURIComponent(artist).replace(/%20/g, '+')
 
-        const headers = {
-            "x-api-key": "rvH9s-nOQE4FOGgLByWj1VfmjzqIaEt5Q8wB",
-            "Accept": "application/json",
-        }
-        const url = `https://api.setlist.fm/rest/1.0/search/artists?artistName=${encodedArtist}&sort=relevance`
-
-        const response = await fetch(url, { headers })
-        const data: any = await response.json();
-
-        const mbid: string = data.artist[0].mbid
-
-        const searchSetlist = await fetch(`https://api.setlist.fm/rest/1.0/artist/${mbid}/setlists`, { headers })
-
-        const setlistData: any = await searchSetlist.json();
-
-        console.log(setlistData)
-
-        return c.json(setlistData)
-
-
-    } catch (error) {
-        console.error('Error fetching HTML:', error)
-        return c.text('Error fetching HTML', 500)
-    }
-})
-
-app.get('/api/fetch-html/livefans', async (c) => {
-    try {
-        const artist = c.req.query('artist') || ''
-        const encodedArtist = encodeURIComponent(artist).replace(/%20/g, '+')
-        const url = `https://www.livefans.jp/search?option=1&keyword=${encodedArtist}&genre=all`
-
-        const payload = { 'handler_type': 'sub', url }
-
-        const lambdaApiUrl = 'https://pur2p81urh.execute-api.ap-northeast-1.amazonaws.com/default/selenium-lambda';
-
-        const lambda_response = await fetch(lambdaApiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!lambda_response.ok) {
-            throw new Error(`Lambda API responded with status: ${lambda_response.status}`);
-        }
-
-        const setlistJson = await lambda_response.json();
-
-        console.log(setlistJson)
-
-        return c.json(setlistJson)
-    } catch (error) {
-        console.error('Error fetching HTML:', error)
-        return c.text('Error fetching HTML', 500)
-    }
-})
 
 export const handler = handle(app)
 
