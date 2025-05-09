@@ -1,6 +1,6 @@
 # SpecStory explanation file
 .specstory/.what-is-this.md
-./specstory
+.specstory
 ./env.ts
 ./hono-sam/hello-world/node_modules
 ./hono-sam/hello-world/.env
